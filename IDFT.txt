@@ -1,0 +1,38 @@
+//IDFT
+
+#include<stdio.h>
+#include<math.h>
+#define pi 3.14
+
+void main()
+{
+float xr[20],xi[20],y[20];
+int N,i,k,n,theta;
+
+
+printf("\nEnter the no of points of idft \t:");
+scanf("%d",&N);
+printf("\nEnter the function variables of f(n) to calculate IDFT in the complex form (e.g. 3+j4 enter as a 3 4)\n");
+for(i=0;i<N;i++)
+{
+scanf("%f\t%f",&xr[i],&xi[i]);
+}
+
+for(k=0;k<N;k++)
+{
+y[k]=0.0;
+
+for(n=0;n<N;n++) /*DFT calculation*/
+{
+theta= (2*pi*k*n)/N;
+y[k]=y[k]+xr[n]*cos(theta)-xi[n]*sin(theta);
+}
+y[k]=y[k]/N;
+}
+/*Display values of F[k]*/
+printf("\nIDFT OF GIVEN SIGNAL:-\n");
+for(i=0;i<N;i++)
+{
+printf("\n%f\n",y[i]);
+}
+}

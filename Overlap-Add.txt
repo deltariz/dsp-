@@ -1,0 +1,178 @@
+// Overlap-Add.c
+//
+
+#include "L138_LCDK_aic3106_init.h"
+
+#include <math.h>
+#include <stdio.h>
+
+#define PTS 4096                   //number of points used in FFT
+#define NUMCOEFFS  31
+#define PI 3.14159265358979
+
+typedef struct { float real, imag;} COMPLEX;
+void FFT(COMPLEX *Y, int N);
+
+
+short buffercount = 0;            //number of new input samples in iobuffer
+float in_buffer[PTS/2], out_buffer[PTS/2];            //primary input/output buffer
+COMPLEX samples[PTS];             //primary working buffer used by FFT
+float overlap[PTS/2];             //intermediate result buffer
+COMPLEX w[PTS];                   //twiddle factors stored in w
+COMPLEX h[PTS];                   //freq domain filter coeffs stored in h
+short i,flag;                          //general purpose index variable
+float a,b;                        //variables used in complex multiply
+
+float coeffs[NUMCOEFFS]={-0.01348909363, -0.01021953207,-0.005696943495,2.920240591e-18, 0.006732751615,
+        0.01430734433,  0.02248182334,  0.03097631037,  0.03948523849,  0.04769114777,
+        0.05527933314,  0.06195262074,  0.06744547188,   0.0715367198,   0.0740602687,
+        0.07491308451,   0.0740602687,   0.0715367198,  0.06744547188,  0.06195262074,
+        0.05527933314,  0.04769114777,  0.03948523849,  0.03097631037,  0.02248182334,
+        0.01430734433, 0.006732751615,2.920240591e-18,-0.005696943495, -0.01021953207,
+       -0.01348909363};   //LPF-Fc=2KHz Fs=48000KHz-Rectangular*/
+
+interrupt void interrupt4(void)  // interrupt service routine
+{
+  uint32_t sample;
+  output_right_sample((short)(out_buffer[buffercount]));
+  in_buffer[buffercount++] = (float)((short)input_right_sample());
+  if (buffercount >= PTS/2)        //for overlap-add method iobuffer
+    {                               //is half size of FFT used
+     buffercount = 0;
+     flag = 1;
+    }
+  return;
+}
+
+int main(void)
+{
+      for (i=0 ; i<PTS ; i++)         //set up twiddle factors in array w
+      {
+        w[i].real = cos(PI*(i)/PTS);
+        w[i].imag = -sin(PI*(i)/PTS);
+      }
+    printf("twiddle factors set up ...\n");
+    printf("\n");                     //insert breakpoint
+      for (i=0 ; i<PTS ; i++)         //set up complex time domain filter coeffs
+      {
+        h[i].real = 0.0;
+        h[i].imag = 0.0;
+      }
+      for (i=0 ; i<NUMCOEFFS ; i++)
+      {
+        h[i].real = coeffs[i];
+      }
+
+      FFT(h,PTS);                     //transform filter coeffs to freq domain
+
+      for (i=0 ; i<PTS/2 ; i++)
+        {
+        samples[i+PTS/2].real = 0.0;
+        overlap[i] = 0.0;
+        }
+
+      L138_initialise_intr(FS_48000_HZ,ADC_GAIN_0DB,DAC_ATTEN_0DB,LCDK_LINE_INPUT);
+
+  while(1)
+  {
+      while (flag == 0);           //wait for iobuffer full
+             flag = 0;
+           for (i = 0 ; i<PTS/2 ; i++)  //iobuffer into first half of
+           {                            //samples buffer
+            samples[i].real = in_buffer[i];
+            out_buffer[i] = overlap[i];   //previously processed output
+           }                            //to iobuffer
+          for (i = 0 ; i<PTS/2 ; i++)
+          {                             //copy second half of samples(previous output) to overlap
+            overlap[i] = samples[i+PTS/2].real;
+            samples[i+PTS/2].real = 0.0;//zero-pad input from iobuffer
+          }
+          for (i=0 ; i<PTS ; i++)
+            samples[i].imag = 0.0;      //init imag parts in samples buffer
+          FFT(samples,PTS);             //transform Input Samples to freq domain
+          for (i=0 ; i<PTS ; i++)
+              {
+              a = samples[i].real;
+              b = samples[i].imag;
+              samples[i].real = h[i].real*a - h[i].imag*b;
+              samples[i].imag = h[i].real*b + h[i].imag*a;
+              }
+          for (i=0 ; i<PTS ; i++)       //inverse transform samples back to time domain
+             {
+               samples[i].imag = -samples[i].imag;
+             }
+             FFT(samples,PTS);
+             for (i=0 ; i<PTS ; i++)
+             {
+               samples[i].real = samples[i].real/PTS;
+               samples[i].imag = -samples[i].imag/PTS;
+             }
+
+            for (i=0 ; i<PTS/2 ; i++)     //Add first half of samples(present o/p) with Second half of Previous output
+                   overlap[i] += samples[i].real; //to overlap
+  }
+}
+
+
+
+void FFT(COMPLEX *Y, int N)       //input sample array, # of points
+{
+  COMPLEX temp1,temp2;            //temporary storage variables
+  int i,j,k;                      //loop counter variables
+  int upper_leg, lower_leg;       //index of upper/lower butterfly leg
+  int leg_diff;                   //difference between upper/lower leg
+  int num_stages=0;               //number of FFT stages, or iterations
+  int index, step;                //index and step between twiddle factor
+  i=1;                            //log(base 2) of # of points = # of stages
+  do
+  {
+    num_stages+=1;
+    i=i*2;
+  } while (i!=N);
+
+  leg_diff=N/2;                   //starting difference between upper & lower legs
+  step=2;                     //step between values in twiddle.h
+  for (i=0;i<num_stages;i++)      //for N-point FFT
+  {
+    index=0;
+    for (j=0;j<leg_diff;j++)
+    {
+      for (upper_leg=j;upper_leg<N;upper_leg+=(2*leg_diff))
+      {
+        lower_leg=upper_leg+leg_diff;
+        temp1.real=(Y[upper_leg]).real + (Y[lower_leg]).real;
+        temp1.imag=(Y[upper_leg]).imag + (Y[lower_leg]).imag;
+        temp2.real=(Y[upper_leg]).real - (Y[lower_leg]).real;
+        temp2.imag=(Y[upper_leg]).imag - (Y[lower_leg]).imag;
+        (Y[lower_leg]).real=temp2.real*(w[index]).real-temp2.imag*(w[index]).imag;
+        (Y[lower_leg]).imag=temp2.real*(w[index]).imag+temp2.imag*(w[index]).real;
+        (Y[upper_leg]).real=temp1.real;
+        (Y[upper_leg]).imag=temp1.imag;
+      }
+      index+=step;
+    }
+    leg_diff=leg_diff/2;
+    step*=2;
+  }
+  j=0;
+  for (i=1;i<(N-1);i++)           //bit reversal for resequencing data*/
+  {
+    k=N/2;
+    while (k<=j)
+    {
+      j=j-k;
+      k=k/2;
+    }
+    j=j+k;
+    if (i<j)
+    {
+      temp1.real=(Y[j]).real;
+      temp1.imag=(Y[j]).imag;
+      (Y[j]).real=(Y[i]).real;
+      (Y[j]).imag=(Y[i]).imag;
+      (Y[i]).real=temp1.real;
+      (Y[i]).imag=temp1.imag;
+    }
+  }
+  return;
+}                                 //end of FFT()

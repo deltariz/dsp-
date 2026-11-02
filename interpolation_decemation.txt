@@ -1,0 +1,63 @@
+
+//interpolation .c
+
+#include<stdio.h>
+#include<math.h>
+#define FREQ 500
+float ty[256];
+int tb=2;
+float tx[128];
+float x[256],y[256];
+void main()
+{
+	int txx,ti,tc,td;
+	int a,b,d;
+	int i,j,z,g;
+	int tj,tcc,tz;
+	int ta=128;
+
+	for(i=0;i<127;i++)
+ {
+  tx[i]=30000*sin(2*3.14*FREQ*i/8000);
+  printf("%f\n",tx[i]);
+ }
+	tc = tb - 1;
+		txx = 0;
+
+
+		for (ti=1;ti<=ta;ti++)
+		{
+			ty[ti+txx] = tx[ti];
+			tcc = ti+txx;
+
+			tz = ti;
+			for (tj = 1 ; tj<=tc ;tj++)
+			{
+				ty[tcc+1] = 0;
+				ti = ti+1;
+				tcc = tcc+1;
+			}
+			txx = tcc-tz;
+			ti = ti-tc;
+		}
+		td = ta*tb;
+		for(ti=1;ti<=td;ti++)
+		{
+			printf("\n The Value of output ty[%d]=%f",ti,ty[ti]);
+}
+
+
+		b=2;
+		 j=1;
+		for (g=1;g<=128;g++)
+		   {
+		   y[g] = ty[j];
+		   j = j+b;
+		   printf("%f\n",y[g]);
+		   }
+
+
+		
+
+
+}
